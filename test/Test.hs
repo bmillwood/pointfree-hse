@@ -59,4 +59,7 @@ main = mapM_ test
   , ( "\\x -> f x y"    , "flip f y"    )
   , ( "\\x -> f x x"    , "join f"      )
   , ( "\\x -> f x (g x)", "ap f g"      )
+
+  -- lambdas with lambda body
+  , ( "\\x y -> f x", "const . f" )
   ]

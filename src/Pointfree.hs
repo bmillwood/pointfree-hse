@@ -24,7 +24,10 @@ addRestore f p@PointInContext{ restore } =
   p{ restore = Just $ f . fromMaybe id restore }
 
 pointfree :: HSE.Exp () -> HSE.Exp ()
-pointfree e = go (findPoints e)
+pointfree e =
+  -- findPoints finds things from the outside in, but typically we want the
+  -- inside out
+  go (reverse (findPoints e))
   where
     go [] = e
     go (PointInContext{ pointExp = Lambda () p b, restore } : points) =
@@ -39,8 +42,8 @@ findPoints (HSE.Lambda () (pat : pats) body) =
   : map (addRestore (Exprs.lambda [pat])) (findPoints (Exprs.lambda pats body))
 findPoints (HSE.App () f x) =
   concat
-    [ map (addRestore (\g -> Exprs.app g x)) (findPoints f)
-    , map (addRestore (\y -> Exprs.app f y)) (findPoints x)
+    [ map (addRestore (\y -> Exprs.app f y)) (findPoints x)
+    , map (addRestore (\g -> Exprs.app g x)) (findPoints f)
     ]
 findPoints e@(HSE.Paren () _) = go id e
   where
