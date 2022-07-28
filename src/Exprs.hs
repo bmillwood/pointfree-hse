@@ -2,14 +2,18 @@ module Exprs where
 
 import qualified Language.Haskell.Exts as HSE
 
+varI :: String -> HSE.Exp ()
 varI i = HSE.Var () (HSE.UnQual () (HSE.Ident () i))
+id, const, ap, flip, join :: HSE.Exp ()
 id = varI "id"
 const = varI "const"
 ap = varI "ap"
 flip = varI "flip"
 join = varI "join"
 
+opS :: String -> HSE.QOp ()
 opS s = HSE.QVarOp () (HSE.UnQual () (HSE.Symbol () s))
+compose, dollar :: HSE.QOp ()
 compose = opS "."
 dollar = opS "$"
 

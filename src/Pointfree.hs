@@ -39,23 +39,19 @@ findPoints (HSE.Lambda () (pat : pats) body) =
   : map (addRestore (Exprs.lambda [pat])) (findPoints (Exprs.lambda pats body))
 findPoints (HSE.App () f x) =
   concat
-    [ map (addRestore (\f -> Exprs.app f x)) (findPoints f)
-    , map (addRestore (\x -> Exprs.app f x)) (findPoints x)
+    [ map (addRestore (\g -> Exprs.app g x)) (findPoints f)
+    , map (addRestore (\y -> Exprs.app f y)) (findPoints x)
     ]
-findPoints (HSE.Paren () e) = go (HSE.Paren ()) e
+findPoints e@(HSE.Paren () _) = go id e
   where
     -- this nonsense is so that we keep parens that are already in the
     -- expr, but we don't keep them if we replace the expr with something else
-    go k (HSE.Paren () e) = go (k . HSE.Paren ()) e
-    go k e = map (addParens k) (findPoints e)
+    go k (HSE.Paren () inner) = go (k . HSE.Paren ()) inner
+    go k other = map (addParens k) (findPoints other)
     addParens k p@PointInContext{ restore }
       -- the only place we treat Nothing differently from Just id
       = p{ restore = fmap (k .) restore }
 findPoints _ = []
-
-pointedAt :: PointExp () -> HSE.Exp ()
-pointedAt (Lambda () pat (HSE.Lambda () pats body)) = HSE.Lambda () (pat : pats) body
-pointedAt (Lambda () pat body) = HSE.Lambda () [pat] body
 
 simplifyPat :: HSE.Pat () -> HSE.Exp () -> Maybe (HSE.Name (), HSE.Exp ())
 simplifyPat (HSE.PVar () n) e = Just (n, e)
@@ -89,7 +85,6 @@ unapply n = fmap finalise . unapp
         (Other of_, Const cx) -> Other (Exprs.apps Exprs.flip [of_, cx])
         (Other of_, Id) -> Other (Exprs.app Exprs.join of_)
         (Other of_, Other ox) -> useAp of_ ox
-      where
-        useAp f g = Other (Exprs.apps Exprs.ap [f, g])
     unapp (HSE.Paren () e) = unapp e
     unapp _ = Nothing
+    useAp f g = Other (Exprs.apps Exprs.ap [f, g])

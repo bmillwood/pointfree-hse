@@ -11,24 +11,26 @@ showExp = HSE.prettyPrint
 --showExp = show
 
 test :: (String, String) -> IO ()
-test (inp, exp) =
-  case (parse inp, parse exp) of
+test (input, expected) =
+  case (parse input, parse expected) of
     (HSE.ParseOk inpE, HSE.ParseOk expE) ->
-      handle (\e -> error $ show (inp, exp, (e :: SomeException))) $ do
+      handle
+        (\e -> error $ show (input, expected, (e :: SomeException)))
+        $ do
         let actual = pointfree inpE
         if actual == expE
         then pure ()
         else
           error $ unlines
-            [ inp
+            [ input
             , " -> " ++ (showExp actual)
             , " /= " ++ (showExp expE)
             ]
     (inpR, expR) -> error $ unlines
       [ "parse failure"
-      , inp
+      , input
       , " -> " ++ show inpR
-      , exp
+      , expected
       , " -> " ++ show expR
       ]
   where
