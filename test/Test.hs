@@ -1,16 +1,21 @@
 module Main (main) where
 
+import Control.Exception
+
 import qualified Language.Haskell.Exts as HSE
 
 import Pointfree
 
 showExp :: HSE.Exp () -> String
-showExp = show
+showExp = HSE.prettyPrint
+--showExp = show
 
-test :: String -> String -> IO ()
-test inp exp =
+test :: (String, String) -> IO ()
+test (inp, exp) =
   case (parse inp, parse exp) of
     (HSE.ParseOk inpE, HSE.ParseOk expE) ->
+      handle (\e -> error $ show (inp, exp, (e :: SomeException))) $ do
+        let actual = pointfree inpE
         if actual == expE
         then pure ()
         else
@@ -19,26 +24,30 @@ test inp exp =
             , " -> " ++ (showExp actual)
             , " /= " ++ (showExp expE)
             ]
-      where
-        actual = pointfree inpE
+    (inpR, expR) -> error $ unlines
+      [ "parse failure"
+      , inp
+      , " -> " ++ show inpR
+      , exp
+      , " -> " ++ show expR
+      ]
   where
     parse = fmap (fmap (const ())) . HSE.parseExp
 
 main :: IO ()
-main = do
-  test "y" "y"
+main = mapM_ test
+  [ ( "y", "y" )
 
-  test "\\x -> x" "id"
-  test "\\x -> y" "const y"
+  , ( "\\x -> x", "id"      )
+  , ( "\\x -> y", "const y" )
 
-  test "\\x y -> y" "const id"
-
-  test "\\x -> f y"       "const (f y)"
-  test "\\x -> f x"       "f"
-  test "\\x -> f (g x)"   "f . g"
-  test "\\x -> x y"       "($ y)"
-  test "\\x -> x x"       "ap id id"
-  test "\\x -> x (g x)"   "ap id g"
-  test "\\x -> f x y"     "flip f y"
-  test "\\x -> f x x"     "join f"
-  test "\\x -> f x (g x)" "ap f g"
+  , ( "\\x -> f y"      , "const (f y)" )
+  , ( "\\x -> f x"      , "f"           )
+  , ( "\\x -> f (g x)"  , "f . g"       )
+  , ( "\\x -> x y"      , "($ y)"       )
+  , ( "\\x -> x x"      , "ap id id"    )
+  , ( "\\x -> x (g x)"  , "ap id g"     )
+  , ( "\\x -> f x y"    , "flip f y"    )
+  , ( "\\x -> f x x"    , "join f"      )
+  , ( "\\x -> f x (g x)", "ap f g"      )
+  ]
