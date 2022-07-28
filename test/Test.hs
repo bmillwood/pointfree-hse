@@ -36,11 +36,18 @@ test (inp, exp) =
 
 main :: IO ()
 main = mapM_ test
+  -- identity cases
   [ ( "y", "y" )
 
+  -- lambdas with variable body
   , ( "\\x -> x", "id"      )
   , ( "\\x -> y", "const y" )
 
+  -- reaching inside apps, and handling parens
+  , ( "f (\\x -> x)",   "f id"   )
+  , ( "(f (\\x -> x))", "(f id)" )
+
+  -- lambdas with application body
   , ( "\\x -> f y"      , "const (f y)" )
   , ( "\\x -> f x"      , "f"           )
   , ( "\\x -> f (g x)"  , "f . g"       )

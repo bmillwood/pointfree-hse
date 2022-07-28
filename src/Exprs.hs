@@ -20,6 +20,7 @@ lambda ps b = HSE.Lambda () ps b
 
 app :: HSE.Exp () -> HSE.Exp () -> HSE.Exp ()
 app f x@(HSE.App () _ _) = HSE.App () f (HSE.Paren () x)
+app f x@(HSE.Lambda () _ _) = HSE.App () f (HSE.Paren () x)
 app f x = HSE.App () f x
 
 apps :: HSE.Exp () -> [HSE.Exp ()] -> HSE.Exp ()

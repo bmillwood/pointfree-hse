@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE NamedFieldPuns #-}
 module Pointfree (pointfree) where
 
 import Data.Maybe (fromMaybe)
@@ -10,20 +11,46 @@ import qualified Exprs
 data PointExp l
   = Lambda l (HSE.Pat l) (HSE.Exp l)
 
+data PointInContext l = PointInContext
+  { pointExp :: PointExp l
+  , restore :: Maybe (HSE.Exp l -> HSE.Exp l)
+  }
+
+noContext :: PointExp l -> PointInContext l
+noContext pointExp = PointInContext { pointExp, restore = Nothing }
+
+addRestore :: (HSE.Exp l -> HSE.Exp l) -> PointInContext l -> PointInContext l
+addRestore f p@PointInContext{ restore } =
+  p{ restore = Just $ f . fromMaybe id restore }
+
 pointfree :: HSE.Exp () -> HSE.Exp ()
 pointfree e = go (findPoints e)
   where
     go [] = e
-    go ((Lambda () p b, restore) : points) =
+    go (PointInContext{ pointExp = Lambda () p b, restore } : points) =
       case simplifyPat p b >>= uncurry unapply of
         Nothing -> go points
-        Just f -> pointfree (restore f)
+        Just f -> pointfree (fromMaybe id restore f)
 
-findPoints :: HSE.Exp () -> [(PointExp (), HSE.Exp () -> HSE.Exp ())]
+findPoints :: HSE.Exp () -> [PointInContext ()]
 findPoints (HSE.Lambda () [] body) = findPoints body
 findPoints (HSE.Lambda () (pat : pats) body) =
-  (Lambda () pat (Exprs.lambda pats body), id)
-  : map (fmap (Exprs.lambda [pat] .)) (findPoints (Exprs.lambda pats body))
+  noContext (Lambda () pat (Exprs.lambda pats body))
+  : map (addRestore (Exprs.lambda [pat])) (findPoints (Exprs.lambda pats body))
+findPoints (HSE.App () f x) =
+  concat
+    [ map (addRestore (\f -> Exprs.app f x)) (findPoints f)
+    , map (addRestore (\x -> Exprs.app f x)) (findPoints x)
+    ]
+findPoints (HSE.Paren () e) = go (HSE.Paren ()) e
+  where
+    -- this nonsense is so that we keep parens that are already in the
+    -- expr, but we don't keep them if we replace the expr with something else
+    go k (HSE.Paren () e) = go (k . HSE.Paren ()) e
+    go k e = map (addParens k) (findPoints e)
+    addParens k p@PointInContext{ restore }
+      -- the only place we treat Nothing differently from Just id
+      = p{ restore = fmap (k .) restore }
 findPoints _ = []
 
 pointedAt :: PointExp () -> HSE.Exp ()
