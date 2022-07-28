@@ -11,25 +11,34 @@ data PointExp l
   = Lambda l (HSE.Pat l) (HSE.Exp l)
 
 pointfree :: HSE.Exp () -> HSE.Exp ()
-pointfree e = fromMaybe e do
-  (Lambda l p b, restore) <- findPoint e
-  (n, sb) <- simplifyPat p b
-  f <- unapply n sb
-  pure (pointfree (restore f))
+pointfree e = go (findPoints e)
+  where
+    go [] = e
+    go ((Lambda () p b, restore) : points) =
+      case simplifyPat p b >>= uncurry unapply of
+        Nothing -> go points
+        Just f -> pointfree (restore f)
 
-findPoint :: HSE.Exp l -> Maybe (PointExp l, HSE.Exp l -> HSE.Exp l)
-findPoint (HSE.Lambda la [] body) = fmap (fmap (fmap (HSE.Lambda la []))) (findPoint body)
-findPoint (HSE.Lambda la [pat] body) = Just (Lambda la pat body, id)
-findPoint (HSE.Lambda la (pat : pats) body)
-  = Just (Lambda la pat (HSE.Lambda la pats body), id)
-findPoint _ = Nothing
+lambda :: HSE.Pat () -> HSE.Exp () -> HSE.Exp ()
+lambda p (HSE.Lambda () ps b) = HSE.Lambda () (p : ps) b
+lambda p b = HSE.Lambda () [p] b
 
-pointedAt :: PointExp l -> HSE.Exp l
-pointedAt (Lambda l1 pat (HSE.Lambda l2 pats body)) = HSE.Lambda l1 (pat : pats) body
-pointedAt (Lambda l pat body) = HSE.Lambda l [pat] body
+findPoints :: HSE.Exp () -> [(PointExp (), HSE.Exp () -> HSE.Exp ())]
+findPoints (HSE.Lambda () [] body) = map (fmap (HSE.Lambda () [] .)) (findPoints body)
+findPoints (HSE.Lambda () [pat] body) =
+  (Lambda () pat body, id)
+  : map (fmap (HSE.Lambda () [pat] .)) (findPoints body)
+findPoints (HSE.Lambda () (pat : pats) body) =
+  (Lambda () pat (HSE.Lambda () pats body), id)
+  : map (fmap (lambda pat .)) (findPoints (HSE.Lambda () pats body))
+findPoints _ = []
 
-simplifyPat :: HSE.Pat l -> HSE.Exp l -> Maybe (HSE.Name l, HSE.Exp l)
-simplifyPat (HSE.PVar l n) e = Just (n, e)
+pointedAt :: PointExp () -> HSE.Exp ()
+pointedAt (Lambda () pat (HSE.Lambda () pats body)) = HSE.Lambda () (pat : pats) body
+pointedAt (Lambda () pat body) = HSE.Lambda () [pat] body
+
+simplifyPat :: HSE.Pat () -> HSE.Exp () -> Maybe (HSE.Name (), HSE.Exp ())
+simplifyPat (HSE.PVar () n) e = Just (n, e)
 simplifyPat _ _ = Nothing
 
 -- app (unapply n e) n -> e

@@ -26,3 +26,4 @@ main = do
   test "id" "id"
   test "\\x -> x" "id"
   test "\\x -> y" "const y"
+  test "\\x -> \\y -> y" "const id"
