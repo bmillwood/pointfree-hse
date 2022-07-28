@@ -19,18 +19,16 @@ pointfree e = go (findPoints e)
         Nothing -> go points
         Just f -> pointfree (restore f)
 
-lambda :: HSE.Pat () -> HSE.Exp () -> HSE.Exp ()
-lambda p (HSE.Lambda () ps b) = HSE.Lambda () (p : ps) b
-lambda p b = HSE.Lambda () [p] b
+lambda :: [HSE.Pat ()] -> HSE.Exp () -> HSE.Exp ()
+lambda [] b = b
+lambda ps1 (HSE.Lambda () ps2 b) = HSE.Lambda () (ps1 ++ ps2) b
+lambda ps b = HSE.Lambda () ps b
 
 findPoints :: HSE.Exp () -> [(PointExp (), HSE.Exp () -> HSE.Exp ())]
-findPoints (HSE.Lambda () [] body) = map (fmap (HSE.Lambda () [] .)) (findPoints body)
-findPoints (HSE.Lambda () [pat] body) =
-  (Lambda () pat body, id)
-  : map (fmap (HSE.Lambda () [pat] .)) (findPoints body)
+findPoints (HSE.Lambda () [] body) = findPoints body
 findPoints (HSE.Lambda () (pat : pats) body) =
-  (Lambda () pat (HSE.Lambda () pats body), id)
-  : map (fmap (lambda pat .)) (findPoints (HSE.Lambda () pats body))
+  (Lambda () pat (lambda pats body), id)
+  : map (fmap (lambda [pat] .)) (findPoints (lambda pats body))
 findPoints _ = []
 
 pointedAt :: PointExp () -> HSE.Exp ()
