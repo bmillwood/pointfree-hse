@@ -4,9 +4,12 @@ module Pointfree (pointfree) where
 
 import Data.Maybe (fromMaybe)
 import Data.Monoid (First (First), getFirst)
+import Data.Set (Set)
+import qualified Data.Set as Set
 
 import qualified Language.Haskell.Exts as HSE
 
+import qualified Names
 import qualified Exprs
 
 data PointExp l
@@ -39,7 +42,15 @@ pointfree e =
 
 eliminatePoint :: PointInContext () -> Maybe (HSE.Exp ())
 eliminatePoint PointInContext{ pointExp = Lambda () p b, restore } =
-  fmap (fromMaybe id restore) $ simplifyPat p b >>= uncurry unapply
+  case
+    -- until we've applied 'restore', we don't know all the names that are bound
+    -- in the expression, so we can't do 'Names.stripPrelude'
+    Right . Names.stripPrelude . fromMaybe id restore
+    =<< maybe (Left "unapply") Right . uncurry unapply
+    =<< maybe (Left "simplifyPat") Right (simplifyPat p b)
+  of
+    Left _ -> Nothing
+    Right e -> Just e
 
 findPoints :: HSE.Exp () -> [PointInContext ()]
 findPoints (HSE.Lambda () [] body) = findPoints body
@@ -63,9 +74,34 @@ findPoints e@(HSE.Paren () _) = go id e
 findPoints _ = []
 
 simplifyPat :: HSE.Pat () -> HSE.Exp () -> Maybe (HSE.Name (), HSE.Exp ())
-simplifyPat (HSE.PVar () n) e = Just (n, e)
-simplifyPat (HSE.PParen () p) e = simplifyPat p e
-simplifyPat _ _ = Nothing
+simplifyPat topP topE =
+  simplifyAnnPat Set.empty
+    (Names.annotatePatWithAllUnQual topP)
+    (Names.annotateExpWith Names.AllUnQual topE)
+  where
+    simplifyAnnPat
+      :: Set (HSE.Name ())
+      -> HSE.Pat (Set (HSE.Name ()))
+      -> HSE.Exp (Set (HSE.Name ()))
+      -> Maybe (HSE.Name (), HSE.Exp ())
+    simplifyAnnPat _ (HSE.PVar _ n) e = Just (() <$ n, () <$ e)
+    simplifyAnnPat avoid (HSE.PTuple names HSE.Boxed [p1, p2]) e = do
+      let newAvoid = Set.union avoid names
+      (n1, e1) <- simplifyAnnPat newAvoid p1 e
+      (n2, e2) <-
+        -- this is sad; we basically drop the annotations and then recompute them
+        simplifyAnnPat newAvoid p2
+        $ Names.annotateExpWith Names.AllUnQual e1
+      let
+        tupleName = Names.new (Names.combine n1 n2) newAvoid
+        tupleExp = HSE.Var () (HSE.UnQual () tupleName)
+        finalExp =
+          Names.replaceFree n1 (Exprs.app Exprs.fst tupleExp)
+          $ Names.replaceFree n2 (Exprs.app Exprs.snd tupleExp)
+          $ e2
+      Just (tupleName, finalExp)
+    simplifyAnnPat avoid (HSE.PParen _ p) e = simplifyAnnPat avoid p e
+    simplifyAnnPat _ _ _ = Nothing
 
 data Unapply
   = Const (HSE.Exp ())
@@ -95,6 +131,19 @@ unapply n = fmap finalise . unapp
         (Other of_, Const cx) -> Other (Exprs.apps Exprs.flip [of_, cx])
         (Other of_, Id) -> Other (Exprs.app Exprs.join of_)
         (Other of_, Other ox) -> useAp of_ ox
+        where
+          useAp af ag = Other (Exprs.apps Exprs.ap [af, ag])
+    unapp (HSE.Lambda () [] body) = unapp body
+    unapp l@(HSE.Lambda () (p : ps) body)
+      | Set.member n boundNames = Just (Const l)
+      | otherwise = do
+          ub <- unapp (Exprs.lambda ps body)
+          Just case ub of
+            Const _ -> Const l
+            Id -> useFlip Exprs.id
+            Other ob -> useFlip ob
+      where
+        boundNames = foldMap (HSE.ann . Names.annotatePatWithAllUnQual) (p : ps)
+        useFlip ob = Other (Exprs.app Exprs.flip (Exprs.lambda [p] ob))
     unapp (HSE.Paren () e) = unapp e
     unapp _ = Nothing
-    useAp f g = Other (Exprs.apps Exprs.ap [f, g])

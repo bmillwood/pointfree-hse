@@ -2,20 +2,27 @@ module Exprs where
 
 import qualified Language.Haskell.Exts as HSE
 
-varI :: String -> HSE.Exp ()
-varI i = HSE.Var () (HSE.UnQual () (HSE.Ident () i))
-id, const, ap, flip, join :: HSE.Exp ()
-id = varI "id"
-const = varI "const"
-ap = varI "ap"
-flip = varI "flip"
-join = varI "join"
+prelude :: HSE.ModuleName ()
+prelude = HSE.ModuleName () "Prelude"
 
-opS :: String -> HSE.QOp ()
-opS s = HSE.QVarOp () (HSE.UnQual () (HSE.Symbol () s))
+preludeI :: String -> HSE.Exp ()
+preludeI i = HSE.Var () (HSE.Qual () prelude (HSE.Ident () i))
+
+id, const, ap, flip, join, fst, snd :: HSE.Exp ()
+id = preludeI "id"
+const = preludeI "const"
+ap = preludeI "ap"
+flip = preludeI "flip"
+join = preludeI "join"
+fst = preludeI "fst"
+snd = preludeI "snd"
+
+preludeS :: String -> HSE.QOp ()
+preludeS s = HSE.QVarOp () (HSE.Qual () prelude (HSE.Symbol () s))
+
 compose, dollar :: HSE.QOp ()
-compose = opS "."
-dollar = opS "$"
+compose = preludeS "."
+dollar = preludeS "$"
 
 lambda :: [HSE.Pat ()] -> HSE.Exp () -> HSE.Exp ()
 lambda [] b = b

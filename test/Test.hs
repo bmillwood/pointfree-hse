@@ -65,4 +65,11 @@ main = mapM_ test
 
   -- lambdas with lambda body
   , ( "\\x y -> f x", "const . f" )
+
+  -- name confusion
+  , ( "\\const y -> x", "const (const x)" )
+
+  -- tuples
+  , ( "\\(x, y) -> x",   "fst"        )
+  , ( "\\(x, y) -> x y", "ap fst snd" )
   ]
