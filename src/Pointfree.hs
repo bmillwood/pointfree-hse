@@ -1,7 +1,9 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE NamedFieldPuns #-}
-module Pointfree (pointfree) where
+module Pointfree (pointfreeSteps, pointfree) where
 
+import Data.List.NonEmpty (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import Data.Monoid (First (First), getFirst)
 import Data.Set (Set)
@@ -27,18 +29,21 @@ addRestore :: (HSE.Exp l -> HSE.Exp l) -> PointInContext l -> PointInContext l
 addRestore f p@PointInContext{ restore } =
   p{ restore = Just $ f . fromMaybe id restore }
 
-pointfree :: HSE.Exp () -> HSE.Exp ()
-pointfree e =
+pointfreeSteps :: HSE.Exp () -> [HSE.Exp ()]
+pointfreeSteps e =
   case getFirst $ foldMap (First . eliminatePoint) points of
-    Nothing -> e
+    Nothing -> []
     Just next ->
       -- restarts the point-finding process from scratch every time
       -- seems fine since we're usually running on small inputs
-      pointfree next
+      next : pointfreeSteps next
   where
     -- findPoints finds things from the outside in, but typically we want the
     -- inside out
     points = reverse (findPoints e)
+
+pointfree :: HSE.Exp () -> HSE.Exp ()
+pointfree e = NE.last (e :| pointfreeSteps e)
 
 eliminatePoint :: PointInContext () -> Maybe (HSE.Exp ())
 eliminatePoint PointInContext{ pointExp = Lambda () p b, restore } =
