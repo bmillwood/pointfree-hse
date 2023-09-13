@@ -3,6 +3,7 @@
 module Pointfree (pointfree) where
 
 import Data.Maybe (fromMaybe)
+import Data.Monoid (First (First), getFirst)
 
 import qualified Language.Haskell.Exts as HSE
 
@@ -25,15 +26,20 @@ addRestore f p@PointInContext{ restore } =
 
 pointfree :: HSE.Exp () -> HSE.Exp ()
 pointfree e =
-  -- findPoints finds things from the outside in, but typically we want the
-  -- inside out
-  go (reverse (findPoints e))
+  case getFirst $ foldMap (First . eliminatePoint) points of
+    Nothing -> e
+    Just next ->
+      -- restarts the point-finding process from scratch every time
+      -- seems fine since we're usually running on small inputs
+      pointfree next
   where
-    go [] = e
-    go (PointInContext{ pointExp = Lambda () p b, restore } : points) =
-      case simplifyPat p b >>= uncurry unapply of
-        Nothing -> go points
-        Just f -> pointfree (fromMaybe id restore f)
+    -- findPoints finds things from the outside in, but typically we want the
+    -- inside out
+    points = reverse (findPoints e)
+
+eliminatePoint :: PointInContext () -> Maybe (HSE.Exp ())
+eliminatePoint PointInContext{ pointExp = Lambda () p b, restore } =
+  fmap (fromMaybe id restore) $ simplifyPat p b >>= uncurry unapply
 
 findPoints :: HSE.Exp () -> [PointInContext ()]
 findPoints (HSE.Lambda () [] body) = findPoints body

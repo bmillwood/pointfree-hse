@@ -57,7 +57,7 @@ main = mapM_ test
   , ( "\\x -> f x"      , "f"           )
   , ( "\\x -> f (g x)"  , "f . g"       )
   , ( "\\x -> x y"      , "($ y)"       )
-  , ( "\\x -> x x"      , "ap id id"    )
+  , ( "\\x -> x x"      , "ap id id"    ) -- nb. wouldn't typecheck
   , ( "\\x -> x (g x)"  , "ap id g"     )
   , ( "\\x -> f x y"    , "flip f y"    )
   , ( "\\x -> f x x"    , "join f"      )
