@@ -14,22 +14,22 @@ license-file:       LICENSE
 author:             Ben Millwood
 maintainer:         thebenmachine+git@gmail.com
 
--- A copyright notice.
--- copyright:
+copyright:          2022-2023 Ben Millwood
 category:           Development
 extra-source-files: CHANGELOG.md
 
 library
     exposed-modules:  Pointfree
 
-    -- Modules included in this library but not exported.
     other-modules:
       Exprs
 
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
+    other-extensions:
+      BlockArguments
+      NamedFieldPuns
+
     build-depends:
-      base ^>= 4.15.1.0,
+      base >= 4.15.1.0 && < 4.17,
       haskell-src-exts ^>= 1.23,
     hs-source-dirs:   src
     default-language: Haskell2010
@@ -39,7 +39,7 @@ test-suite pointfree-ng-test
     type:             exitcode-stdio-1.0
     main-is:          Test.hs
     build-depends:
-      base ^>=4.15.1.0,
+      base >= 4.15.1.0 && < 4.17,
       pointfree-ng,
       haskell-src-exts ^>= 1.23
     hs-source-dirs:   test
