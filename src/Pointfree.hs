@@ -58,6 +58,7 @@ findPoints _ = []
 
 simplifyPat :: HSE.Pat () -> HSE.Exp () -> Maybe (HSE.Name (), HSE.Exp ())
 simplifyPat (HSE.PVar () n) e = Just (n, e)
+simplifyPat (HSE.PParen () p) e = simplifyPat p e
 simplifyPat _ _ = Nothing
 
 data Unapply

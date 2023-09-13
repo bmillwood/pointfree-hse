@@ -45,9 +45,12 @@ main = mapM_ test
   , ( "\\x -> x", "id"      )
   , ( "\\x -> y", "const y" )
 
-  -- reaching inside apps, and handling parens
-  , ( "f (\\x -> x)",   "f id"   )
+  -- reaching inside apps
+  , ( "f (\\x -> x)", "f id" )
+
+  -- parens
   , ( "(f (\\x -> x))", "(f id)" )
+  , ( "\\(x) -> x",     "id"     )
 
   -- lambdas with application body
   , ( "\\x -> f y"      , "const (f y)" )
