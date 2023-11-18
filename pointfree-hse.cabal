@@ -1,21 +1,17 @@
 cabal-version:      2.4
-name:               pointfree-ng
+name:               pointfree-hse
 version:            0.1.0.0
-synopsis:           A new implementation of explicit argument elimination
+synopsis:           Explicit argument elimination for haskell-src-exts ASTs
 
--- A longer description of the package.
--- description:
-homepage:
-
--- A URL where users can report bugs.
--- bug-reports:
+homepage:           https://github.com/bmillwood/pointfree-hse
+bug-reports:        https://github.com/bmillwood/pointfree-hse/issues
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Ben Millwood
 maintainer:         thebenmachine+git@gmail.com
-
 copyright:          2022-2023 Ben Millwood
 category:           Development
+
 extra-source-files: CHANGELOG.md
 
 library
@@ -37,12 +33,12 @@ library
     default-language: Haskell2010
     ghc-options:      -Wall
 
-test-suite pointfree-ng-test
+test-suite pointfree-hse-test
     type:             exitcode-stdio-1.0
     main-is:          Test.hs
     build-depends:
       base >= 4.15.1.0 && < 4.17,
-      pointfree-ng,
+      pointfree-hse,
       haskell-src-exts ^>= 1.23
     hs-source-dirs:   test
     default-language: Haskell2010
