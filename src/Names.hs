@@ -128,34 +128,43 @@ stripPrelude = (() <$) . strip . annotateExpWith Bound
     strip e = error $ "stripPrelude: unhandled " ++ show e
 
 replaceFree :: HSE.Name () -> HSE.Exp () -> HSE.Exp () -> HSE.Exp ()
-replaceFree n with = replaceIn . annotateExpWith FreeUnQual
+replaceFree n with = replaceIfPresent . annotateExpWith FreeUnQual
   where
-    replaceIn (HSE.Var _ (HSE.UnQual _ vn))
-      | (() <$ vn) == n = with
-    replaceIn v@(HSE.Var _ _) = () <$ v
+    replaceIfPresent e
+      | Set.member n (HSE.ann e) = replaceIn e
+      | otherwise = () <$ e
+    -- for replaceIn we already know the name is somewhere in there
+    replaceIn (HSE.Var _ qn)
+      | (() <$ qn) == HSE.UnQual () n = with
+      | otherwise =
+          error $ unwords
+            [ "replaceIn: promised"
+            , show n
+            , " but couldn't find it"
+            ]
     replaceIn (HSE.App _ f x)
       = HSE.App ()
-          (replaceIn f)
-          (replaceIn x)
+          (replaceIfPresent f)
+          (replaceIfPresent x)
     replaceIn (HSE.InfixApp _ l op r) =
       replaceInInfix (Just l) op (Just r)
     replaceIn (HSE.LeftSection _ l op) =
       replaceInInfix (Just l) op Nothing
     replaceIn (HSE.RightSection _ op r) =
       replaceInInfix Nothing op (Just r)
-    replaceIn l@(HSE.Lambda free ps body)
-      | Set.member n free = HSE.Lambda () (map (() <$) ps) (replaceIn body)
-      | otherwise = () <$ l
+    replaceIn (HSE.Lambda _ ps body)
+      = HSE.Lambda () (map (() <$) ps) (replaceIn body)
     replaceIn (HSE.Paren _ e) = HSE.Paren () (replaceIn e)
     replaceIn e = error $ "replaceIn: unhandled " ++ show e
     replaceInInfix ml op mr
       | Set.member n (HSE.ann op) =
-        Exprs.infixAsPrefix
-          (replaceIn <$> ml)
-          with
-          (replaceIn <$> mr)
+        Exprs.infixAsPrefix rl with rr
       | otherwise =
-        Exprs.infixOrSection
-          (replaceIn <$> ml)
-          (() <$ op)
-          (replaceIn <$> mr)
+        Exprs.infixOrSection rl (() <$ op) rr
+      where
+        (rl, rr) = case (ml, mr) of
+          (Nothing, Nothing) -> (Nothing, Nothing)
+          (Just l, Nothing) -> (Just (replaceIn l), Nothing)
+          (Nothing, Just r) -> (Nothing, Just (replaceIn r))
+          (Just l, Just r) ->
+            (Just (replaceIfPresent l), Just (replaceIfPresent r))
