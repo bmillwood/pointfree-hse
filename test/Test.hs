@@ -56,15 +56,19 @@ pointfreeCases =
   , ( "\\(x) -> x",     "id"     )
 
   -- lambdas with application body
-  , ( "\\x -> f y"      , "const (f y)" )
-  , ( "\\x -> f x"      , "f"           )
-  , ( "\\x -> f (g x)"  , "f . g"       )
-  , ( "\\x -> x y"      , "($ y)"       )
-  , ( "\\x -> x x"      , "ap id id"    ) -- nb. wouldn't typecheck
-  , ( "\\x -> x (g x)"  , "ap id g"     )
-  , ( "\\x -> f x y"    , "flip f y"    )
-  , ( "\\x -> f x x"    , "join f"      )
-  , ( "\\x -> f x (g x)", "ap f g"      )
+  , ( "\\x -> f y"        , "const (f y)" )
+  , ( "\\x -> f x"        , "f"           )
+  , ( "\\x -> f (g x)"    , "f . g"       )
+  , ( "\\x -> f (g (h x))", "f . g . h"   )
+  , ( "\\x -> x y"        , "($ y)"       )
+  , ( "\\x -> x (g x)"    , "ap id g"     )
+  , ( "\\x -> f x y"      , "flip f y"    )
+  , ( "\\x -> f x x"      , "join f"      )
+  , ( "\\x -> f x (g x)"  , "ap f g"      )
+
+  -- infix application
+  , ( "\\x -> x + x"  , "join (+)" )
+  , ( "\\x y -> x + y", "(+)"      )
 
   -- lambdas with lambda body
   , ( "\\x y -> f x", "const . f" )
