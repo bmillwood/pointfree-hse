@@ -37,12 +37,22 @@ data Which
   = AllUnQual
   | FreeUnQual
   | Bound
+  deriving (Show)
 
 annotateExpWith :: Which -> HSE.Exp () -> HSE.Exp (Set (HSE.Name ()))
 annotateExpWith = annExp Set.empty
 
 annotatePatWithAllUnQual :: HSE.Pat () -> HSE.Pat (Set (HSE.Name ()))
 annotatePatWithAllUnQual = annPat
+  where
+    annPat p@(HSE.PVar () n) = Set.singleton n <$ p
+    annPat (HSE.PParen () p) = HSE.PParen (HSE.ann ap) ap
+      where
+        ap = annPat p
+    annPat (HSE.PTuple () boxed ps) = HSE.PTuple (foldMap HSE.ann aps) boxed aps
+      where
+        aps = map annPat ps
+    annPat p = error $ "annPat: unhandled " ++ show p
 
 annExp :: Set (HSE.Name ()) -> Which -> HSE.Exp () -> HSE.Exp (Set (HSE.Name ()))
 annExp bound which (HSE.Var () q) = HSE.Var =<< HSE.ann $ annQName bound which q
@@ -53,13 +63,16 @@ annExp bound which (HSE.App () f x) = HSE.App newAnn af ax
     newAnn = annSubs bound which [HSE.ann af, HSE.ann ax]
 annExp bound which (HSE.Lambda () ps body) = HSE.Lambda newAnn aps abody
   where
-    aps = map annPat ps
-    patnames = foldMap HSE.ann aps
+    auqps = map annotatePatWithAllUnQual ps
+    patnames = foldMap HSE.ann auqps
     abody = annExp (Set.union bound patnames) which body
     newAnn = case which of
       AllUnQual -> Set.union patnames (HSE.ann abody)
       FreeUnQual -> HSE.ann abody Set.\\ patnames
       Bound -> bound
+    aps = case which of
+      AllUnQual -> auqps
+      _ -> map (error ("annExp: " <> show which <> " not implemented for patterns") <$) ps
 annExp bound which (HSE.Paren () e) = HSE.Paren =<< HSE.ann $ annExp bound which e
 annExp bound which (HSE.InfixApp () e1 qop e2) = HSE.InfixApp newAnn ae1 aop ae2
   where
@@ -91,16 +104,6 @@ annQName _ _ q = Set.empty <$ q
 annQOp :: Set (HSE.Name ()) -> Which -> HSE.QOp () -> HSE.QOp (Set (HSE.Name ()))
 annQOp bound which (HSE.QVarOp () q) = HSE.QVarOp =<< HSE.ann $ annQName bound which q
 annQOp bound which (HSE.QConOp () q) = HSE.QConOp =<< HSE.ann $ annQName bound which q
-
-annPat :: HSE.Pat () -> HSE.Pat (Set (HSE.Name ()))
-annPat p@(HSE.PVar () n) = Set.singleton n <$ p
-annPat (HSE.PParen () p) = HSE.PParen (HSE.ann ap) ap
-  where
-    ap = annPat p
-annPat (HSE.PTuple () boxed ps) = HSE.PTuple (foldMap HSE.ann aps) boxed aps
-  where
-    aps = map annPat ps
-annPat p = error $ "annPat: unhandled " ++ show p
 
 stripPrelude :: HSE.Exp () -> HSE.Exp ()
 stripPrelude = (() <$) . strip . annotateExpWith Bound

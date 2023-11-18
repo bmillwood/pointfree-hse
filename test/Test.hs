@@ -69,6 +69,7 @@ pointfreeCases =
   -- infix application
   , ( "\\x -> y + x"  , "(y +)"     )
   , ( "\\x -> x + y"  , "(+ y)"     )
+  , ( "\\x -> (x +)"  , "(+)"       )
   , ( "\\x y -> x + y", "(+)"       )
   , ( "\\x y -> y + x", "flip (+)"  )
   , ( "\\x -> x + x"  , "join (+)"  )
