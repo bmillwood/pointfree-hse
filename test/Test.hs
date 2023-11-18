@@ -67,8 +67,14 @@ pointfreeCases =
   , ( "\\x -> f x (g x)"  , "ap f g"      )
 
   -- infix application
-  , ( "\\x -> x + x"  , "join (+)" )
-  , ( "\\x y -> x + y", "(+)"      )
+  , ( "\\x -> y + x"  , "(y +)"     )
+  , ( "\\x -> x + y"  , "(+ y)"     )
+  , ( "\\x y -> x + y", "(+)"       )
+  , ( "\\x y -> y + x", "flip (+)"  )
+  , ( "\\x -> x + x"  , "join (+)"  )
+  , ( "\\x -> x + f x", "ap (+) f"  )
+  , ( "\\x -> f x + y", "(+ y) . f" )
+  , ( "\\x -> y + f x", "(y +) . f" )
 
   -- lambdas with lambda body
   , ( "\\x y -> f x", "const . f" )
