@@ -141,8 +141,8 @@ replaceFree n with = replaceIn . annotateExpWith FreeUnQual
       = HSE.App ()
           (() <$ replaceIn f)
           (() <$ replaceIn x)
-    replaceIn l@(HSE.Lambda _ ps body)
-      | Set.member n (HSE.ann body) = HSE.Lambda () (map (() <$) ps) (replaceIn body)
+    replaceIn l@(HSE.Lambda free ps body)
+      | Set.member n free = HSE.Lambda () (map (() <$) ps) (replaceIn body)
       | otherwise = () <$ l
     replaceIn (HSE.Paren _ e) = HSE.Paren () (replaceIn e)
     replaceIn e = error $ "replaceIn: unhandled " ++ show e
