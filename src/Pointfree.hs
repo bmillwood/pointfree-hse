@@ -111,53 +111,53 @@ simplifyPat topP topE =
     simplifyAnnPat _ _ _ = Nothing
 
 data Unapply
-  = Const (HSE.Exp ())
+  = Const
   | Id
   | Other (HSE.Exp ())
 
 -- app (unapply n e) n -> e
 unapply :: HSE.Name () -> HSE.Exp () -> Maybe (HSE.Exp ())
-unapply n = fmap finalise . unapp
+unapply n whole = finalise <$> unapp whole
   where
-    finalise (Const r) = Exprs.app Exprs.const r
+    finalise Const = Exprs.app Exprs.const whole
     finalise Id = Exprs.id
     finalise (Other r) = r
-    unapp e@(HSE.Var () q)
+    unapp (HSE.Var () q)
       | q == HSE.UnQual () n = Just Id
-      | otherwise = Just (Const e)
+      | otherwise = Just Const
     unapp (HSE.App () f x) = do
       uf <- unapp f
       ux <- unapp x
       pure $ case (uf, ux) of
-        (Const cf, Const cx) -> Const (Exprs.app cf cx)
-        (Const cf, Id) -> Other cf
-        (Const cf, Other ox) -> Other (HSE.InfixApp () cf Exprs.compose ox)
-        (Id, Const cx) -> Other (HSE.RightSection () Exprs.dollar cx)
+        (Const, Const) -> Const
+        (Const, Id) -> Other f
+        (Const, Other ox) -> Other (HSE.InfixApp () f Exprs.compose ox)
+        (Id, Const) -> Other (HSE.RightSection () Exprs.dollar x)
         (Id, Id) -> useAp Exprs.id Exprs.id
         (Id, Other ox) -> useAp Exprs.id ox
-        (Other of_, Const cx) -> Other (Exprs.apps Exprs.flip [of_, cx])
+        (Other of_, Const) -> Other (Exprs.apps Exprs.flip [of_, x])
         (Other of_, Id) -> Other (Exprs.app Exprs.join of_)
         (Other of_, Other ox) -> useAp of_ ox
         where
           useAp af ag = Other (Exprs.apps Exprs.ap [af, ag])
-    unapp whole@(HSE.InfixApp () l op r)
+    unapp (HSE.InfixApp () l op r)
       | opName == HSE.UnQual () n =
           unapp (Exprs.apps opVar [l, r])
       | otherwise = do
           ul <- unapp l
           ur <- unapp r
           pure $ case (ul, ur) of
-            (Const _, Const _) -> Const whole
-            (Const _, Id) -> Other (HSE.LeftSection () l op)
-            (Const _, Other or_) ->
+            (Const, Const) -> Const
+            (Const, Id) -> Other (HSE.LeftSection () l op)
+            (Const, Other or_) ->
               Other $ HSE.InfixApp ()
                 (HSE.LeftSection () l op)
                 Exprs.compose
                 or_
-            (Id, Const _) -> Other (HSE.RightSection () op r)
+            (Id, Const) -> Other (HSE.RightSection () op r)
             (Id, Id) -> Other $ Exprs.app Exprs.join opVar
             (Id, Other or_) -> Other $ Exprs.apps Exprs.ap [opVar, or_]
-            (Other ol, Const _) ->
+            (Other ol, Const) ->
               Other $ HSE.InfixApp ()
                 (HSE.RightSection () op r)
                 Exprs.compose
@@ -171,12 +171,12 @@ unapply n = fmap finalise . unapp
             HSE.QVarOp () qn -> qn
             HSE.QConOp () qn -> qn
     unapp (HSE.Lambda () [] body) = unapp body
-    unapp l@(HSE.Lambda () (p : ps) body)
-      | Set.member n boundNames = Just (Const l)
+    unapp (HSE.Lambda () (p : ps) body)
+      | Set.member n boundNames = Just Const
       | otherwise = do
           ub <- unapp (Exprs.lambda ps body)
           Just case ub of
-            Const _ -> Const l
+            Const -> Const
             Id -> useFlip Exprs.id
             Other ob -> useFlip ob
       where
