@@ -115,6 +115,7 @@ simplifyPat topP topE =
 data SpecialCaseExp
   = Const (HSE.Exp ())
   | Id
+  | Compose (HSE.Exp ()) (HSE.Exp ())
   | Other (HSE.Exp ())
 
 -- app (unapply n e) n -> e
@@ -123,7 +124,14 @@ unapply n = fmap unSpecial . unapp
   where
     unSpecial (Const r) = Exprs.app Exprs.const r
     unSpecial Id = Exprs.id
+    unSpecial (Compose e1 e2) = HSE.InfixApp () e1 Exprs.compose e2
     unSpecial (Other r) = r
+    compose Id e = e
+    compose e Id = e
+    compose e1 e2 = Compose (unSpecial e1) (unSpecial e2)
+    -- after this, I don't like pattern-matching on Other because it makes it
+    -- harder to add special cases, this makes patterns easier to spot
+    other = Other
     unapp whole@(HSE.Var () q)
       | q == HSE.UnQual () n = Just Id
       | otherwise = Just (Const whole)
@@ -132,13 +140,13 @@ unapply n = fmap unSpecial . unapp
       ux <- unapp x
       pure $ case (uf, ux) of
         (Const _, Const _) -> Const whole
-        (Const _, Id) -> Other f
-        (Const _, Other ox) -> Other (HSE.InfixApp () f Exprs.compose ox)
-        (Id, Const _) -> Other (HSE.RightSection () Exprs.dollar x)
-        (Other of_, Const _) -> Other (Exprs.apps Exprs.flip [of_, x])
-        (Other of_, Id) -> Other (Exprs.app Exprs.join of_)
+        (Const _, Id) -> other f
+        (Const _, ox) -> Compose f (unSpecial ox)
+        (Id, Const _) -> other (HSE.RightSection () Exprs.dollar x)
+        (of_, Const _) -> other (Exprs.apps Exprs.flip [unSpecial of_, x])
+        (of_, Id) -> other (Exprs.app Exprs.join (unSpecial of_))
         (of_, ox) ->
-          Other $ Exprs.apps Exprs.ap [unSpecial of_, unSpecial ox]
+          other $ Exprs.apps Exprs.ap [unSpecial of_, unSpecial ox]
     unapp whole@(HSE.InfixApp () l op r) =
       unInfixApp whole (Just l) op (Just r)
     unapp whole@(HSE.LeftSection () l op) =
@@ -152,7 +160,7 @@ unapply n = fmap unSpecial . unapp
           ub <- unapp (Exprs.lambda ps body)
           Just case ub of
             Const _ -> Const whole
-            ob -> Other
+            ob -> other
               $ Exprs.app Exprs.flip
               $ Exprs.lambda [p] (unSpecial ob)
       where
@@ -174,22 +182,10 @@ unapply n = fmap unSpecial . unapp
             (Nothing, Just (Const _)) -> Just (Const whole)
             (Just (Const _), Nothing) -> Just (Const whole)
             (Just (Const _), Just (Const _)) -> Just (Const whole)
-            (Just (Const l), Just Id) ->
-              Just . Other $ HSE.LeftSection () l op
-            (Just (Const l), Just (Other or_)) ->
-              Just . Other $
-                HSE.InfixApp ()
-                  (HSE.LeftSection () l op)
-                  Exprs.compose
-                  or_
-            (Just Id, Just (Const r)) ->
-              Just . Other $ HSE.RightSection () op r
-            (Just (Other ol), Just (Const r)) ->
-              Just . Other $
-                HSE.InfixApp ()
-                  (HSE.RightSection () op r)
-                  Exprs.compose
-                  ol
+            (Just (Const l), Just or_) ->
+              Just $ compose (other (HSE.LeftSection () l op)) or_
+            (Just ol, Just (Const r)) ->
+              Just $ compose (other (HSE.RightSection () op r)) ol
             _ -> asPrefixApp
       where
         opName =
