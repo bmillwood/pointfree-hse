@@ -7,7 +7,6 @@ import Data.Foldable (toList)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
-import Data.Monoid (First (First), getFirst)
 import Data.Set (Set)
 import qualified Data.Set as Set
 
@@ -33,31 +32,25 @@ addRestore f p@PointInContext{ restore } =
 
 pointfreeSteps :: HSE.Exp () -> [HSE.Exp ()]
 pointfreeSteps e =
-  case getFirst $ foldMap (First . eliminatePoint) points of
-    Nothing -> []
-    Just next ->
+  -- findPoints finds things from the outside in, but typically we want the
+  -- inside out
+  case reverse (findPoints e) of
+    [] -> []
+    inner : _ ->
+      let next = eliminatePoint inner
+      in
       -- restarts the point-finding process from scratch every time
       -- seems fine since we're usually running on small inputs
       next : pointfreeSteps next
-  where
-    -- findPoints finds things from the outside in, but typically we want the
-    -- inside out
-    points = reverse (findPoints e)
 
 pointfree :: HSE.Exp () -> HSE.Exp ()
 pointfree e = NE.last (e :| pointfreeSteps e)
 
-eliminatePoint :: PointInContext () -> Maybe (HSE.Exp ())
+eliminatePoint :: PointInContext () -> HSE.Exp ()
 eliminatePoint PointInContext{ pointExp = Lambda () p b, restore } =
-  case
-    -- until we've applied 'restore', we don't know all the names that are bound
-    -- in the expression, so we can't do 'Names.stripPrelude'
-    Right . Names.stripPrelude . fromMaybe id restore
-    =<< maybe (Left "unapply") Right . uncurry unapply
-    =<< maybe (Left "simplifyPat") Right (simplifyPat p b)
-  of
-    Left _ -> Nothing
-    Right e -> Just e
+  -- until we've applied 'restore', we don't know all the names that are bound
+  -- in the expression, so we can't do 'Names.stripPrelude'
+  Names.stripPrelude . fromMaybe id restore . uncurry unapply $ simplifyPat p b
 
 findPoints :: HSE.Exp () -> [PointInContext ()]
 findPoints (HSE.Lambda () [] body) = findPoints body
@@ -82,7 +75,7 @@ findPoints _ = []
 
 -- | convert a lambda away from using complex patterns, i.e. given P and E, try
 -- to find a name N and expr X such that @\\N -> X@ is equivalent to @\\P -> E@
-simplifyPat :: HSE.Pat () -> HSE.Exp () -> Maybe (HSE.Name (), HSE.Exp ())
+simplifyPat :: HSE.Pat () -> HSE.Exp () -> (HSE.Name (), HSE.Exp ())
 simplifyPat topP topE =
   simplifyAnnPat Set.empty
     (Names.annotatePatWithAllUnQual topP)
@@ -92,25 +85,26 @@ simplifyPat topP topE =
       :: Set (HSE.Name ())
       -> HSE.Pat (Set (HSE.Name ()))
       -> HSE.Exp (Set (HSE.Name ()))
-      -> Maybe (HSE.Name (), HSE.Exp ())
-    simplifyAnnPat _ (HSE.PVar _ n) e = Just (() <$ n, () <$ e)
-    simplifyAnnPat avoid (HSE.PTuple names HSE.Boxed [p1, p2]) e = do
-      let newAvoid = Set.union avoid names
-      (n1, e1) <- simplifyAnnPat newAvoid p1 e
-      (n2, e2) <-
-        -- this is sad; we basically drop the annotations and then recompute them
-        simplifyAnnPat newAvoid p2
-        $ Names.annotateExpWith Names.AllUnQual e1
+      -> (HSE.Name (), HSE.Exp ())
+    simplifyAnnPat _ (HSE.PVar _ n) e = (() <$ n, () <$ e)
+    simplifyAnnPat avoid (HSE.PTuple names HSE.Boxed [p1, p2]) e =
       let
+        newAvoid = Set.union avoid names
+        (n1, e1) = simplifyAnnPat newAvoid p1 e
+        (n2, e2) =
+          -- this is sad; we basically drop the annotations and then recompute them
+          simplifyAnnPat newAvoid p2
+          $ Names.annotateExpWith Names.AllUnQual e1
         tupleName = Names.new (Names.combine n1 n2) newAvoid
         tupleExp = HSE.Var () (HSE.UnQual () tupleName)
         finalExp =
           Names.replaceFree n1 (Exprs.app Exprs.fst tupleExp)
           $ Names.replaceFree n2 (Exprs.app Exprs.snd tupleExp)
           $ e2
-      Just (tupleName, finalExp)
+      in
+      (tupleName, finalExp)
     simplifyAnnPat avoid (HSE.PParen _ p) e = simplifyAnnPat avoid p e
-    simplifyAnnPat _ _ _ = Nothing
+    simplifyAnnPat _ p _ = error $ "simplifyAnnPat: unhandled " <> show p
 
 data SpecialCaseExp
   = Const (HSE.Exp ())
@@ -118,8 +112,8 @@ data SpecialCaseExp
   | Other (HSE.Exp ())
 
 -- app (unapply n e) n -> e
-unapply :: HSE.Name () -> HSE.Exp () -> Maybe (HSE.Exp ())
-unapply n = fmap unSpecial . unapp
+unapply :: HSE.Name () -> HSE.Exp () -> HSE.Exp ()
+unapply n = unSpecial . unapp
   where
     unSpecial (Const r) = Exprs.app Exprs.const r
     unSpecial Id = Exprs.id
@@ -132,12 +126,10 @@ unapply n = fmap unSpecial . unapp
     compose e1 e2 =
       other $ HSE.InfixApp () (unSpecial e1) Exprs.compose (unSpecial e2)
     unapp whole@(HSE.Var () q)
-      | q == HSE.UnQual () n = Just Id
-      | otherwise = Just (Const whole)
-    unapp whole@(HSE.App () f x) = do
-      uf <- unapp f
-      ux <- unapp x
-      pure $ case (uf, ux) of
+      | q == HSE.UnQual () n = Id
+      | otherwise = Const whole
+    unapp whole@(HSE.App () f x) =
+      case (unapp f, unapp x) of
         (Const _, Const _) -> Const whole
         (Const _, Id) -> other f
         (Const _, ox) -> compose (other f) ox
@@ -154,10 +146,9 @@ unapply n = fmap unSpecial . unapp
       unInfixApp whole Nothing op (Just r)
     unapp (HSE.Lambda () [] body) = unapp body
     unapp whole@(HSE.Lambda () (p : ps) body)
-      | Set.member n boundNames = Just (Const whole)
-      | otherwise = do
-          ub <- unapp (Exprs.lambda ps body)
-          Just case ub of
+      | Set.member n boundNames = Const whole
+      | otherwise =
+          case unapp (Exprs.lambda ps body) of
             Const _ -> Const whole
             ob -> other
               $ Exprs.app Exprs.flip
@@ -165,7 +156,7 @@ unapply n = fmap unSpecial . unapp
       where
         boundNames = foldMap (HSE.ann . Names.annotatePatWithAllUnQual) (p : ps)
     unapp (HSE.Paren () e) = unapp e
-    unapp _ = Nothing
+    unapp e = error $ "unapp: unhandled " <> show e
 
     -- we don't use this function with both ml and mr being Nothing, since that
     -- would be a "two-sided section", but we try to return a right-ish answer
@@ -173,18 +164,16 @@ unapply n = fmap unSpecial . unapp
     unInfixApp whole ml op mr
       | opName == HSE.UnQual () n =
           asPrefixApp
-      | otherwise = do
-          ul <- unappMaybe ml
-          ur <- unappMaybe mr
-          case (ul, ur) of
-            (Nothing, Nothing) -> Just (Const whole) -- two-sided section
-            (Nothing, Just (Const _)) -> Just (Const whole)
-            (Just (Const _), Nothing) -> Just (Const whole)
-            (Just (Const _), Just (Const _)) -> Just (Const whole)
+      | otherwise =
+          case (unapp <$> ml, unapp <$> mr) of
+            (Nothing, Nothing) -> Const whole -- two-sided section
+            (Nothing, Just (Const _)) -> Const whole
+            (Just (Const _), Nothing) -> Const whole
+            (Just (Const _), Just (Const _)) -> Const whole
             (Just (Const l), Just or_) ->
-              Just $ compose (other (HSE.LeftSection () l op)) or_
+              compose (other (HSE.LeftSection () l op)) or_
             (Just ol, Just (Const r)) ->
-              Just $ compose (other (HSE.RightSection () op r)) ol
+              compose (other (HSE.RightSection () op r)) ol
             _ -> asPrefixApp
       where
         opName =
@@ -197,6 +186,4 @@ unapply n = fmap unSpecial . unapp
             (Just l, _) -> unapp (Exprs.apps opVar (l : toList mr))
             (Nothing, Just r) -> unapp (Exprs.apps Exprs.flip [opVar, r])
             (Nothing, Nothing) ->
-              Just Id -- two-sided section
-        unappMaybe Nothing = Just Nothing
-        unappMaybe (Just e) = Just <$> unapp e
+              Id -- two-sided section
