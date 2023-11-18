@@ -139,18 +139,27 @@ replaceFree n with = replaceIn . annotateExpWith FreeUnQual
     replaceIn v@(HSE.Var _ _) = () <$ v
     replaceIn (HSE.App _ f x)
       = HSE.App ()
-          (() <$ replaceIn f)
-          (() <$ replaceIn x)
-    replaceIn (HSE.InfixApp _ l op r)
-      | Set.member n (HSE.ann op) =
-        Exprs.apps with (map replaceIn [l, r])
-      | otherwise =
-        HSE.InfixApp ()
-          (() <$ replaceIn l)
-          (() <$ op)
-          (() <$ replaceIn r)
+          (replaceIn f)
+          (replaceIn x)
+    replaceIn (HSE.InfixApp _ l op r) =
+      replaceInInfix (Just l) op (Just r)
+    replaceIn (HSE.LeftSection _ l op) =
+      replaceInInfix (Just l) op Nothing
+    replaceIn (HSE.RightSection _ op r) =
+      replaceInInfix Nothing op (Just r)
     replaceIn l@(HSE.Lambda free ps body)
       | Set.member n free = HSE.Lambda () (map (() <$) ps) (replaceIn body)
       | otherwise = () <$ l
     replaceIn (HSE.Paren _ e) = HSE.Paren () (replaceIn e)
     replaceIn e = error $ "replaceIn: unhandled " ++ show e
+    replaceInInfix ml op mr
+      | Set.member n (HSE.ann op) =
+        Exprs.infixAsPrefix
+          (replaceIn <$> ml)
+          with
+          (replaceIn <$> mr)
+      | otherwise =
+        Exprs.infixOrSection
+          (replaceIn <$> ml)
+          (() <$ op)
+          (replaceIn <$> mr)

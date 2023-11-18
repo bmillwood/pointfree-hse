@@ -1,5 +1,8 @@
 module Exprs where
 
+import Data.Foldable (toList)
+import Prelude hiding (flip)
+
 import qualified Language.Haskell.Exts as HSE
 
 prelude :: HSE.ModuleName ()
@@ -38,3 +41,20 @@ app f x = HSE.App () f x
 
 apps :: HSE.Exp () -> [HSE.Exp ()] -> HSE.Exp ()
 apps = foldl app
+
+qopAlone :: HSE.QOp () -> HSE.Exp ()
+qopAlone (HSE.QVarOp () qn) = HSE.Var () qn
+qopAlone (HSE.QConOp () qn) = HSE.Con () qn
+
+infixAsPrefix :: Maybe (HSE.Exp ()) -> HSE.Exp () -> Maybe (HSE.Exp ()) -> HSE.Exp ()
+infixAsPrefix ml op mr =
+  case (ml, mr) of
+    (Nothing, Nothing) -> op
+    (Nothing, Just r) -> apps flip [op, r]
+    (Just l, _) -> apps op (l : toList mr)
+
+infixOrSection :: Maybe (HSE.Exp ()) -> HSE.QOp () -> Maybe (HSE.Exp ()) -> HSE.Exp ()
+infixOrSection Nothing op Nothing = qopAlone op
+infixOrSection (Just l) op Nothing = HSE.LeftSection () l op
+infixOrSection Nothing op (Just r) = HSE.RightSection () op r
+infixOrSection (Just l) op (Just r) = HSE.InfixApp () l op r

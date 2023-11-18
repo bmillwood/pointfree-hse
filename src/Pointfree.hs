@@ -3,7 +3,6 @@
 {-# LANGUAGE TupleSections #-}
 module Pointfree (pointfreeSteps, pointfree) where
 
-import Data.Foldable (toList)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
@@ -180,10 +179,5 @@ unapply n = unSpecial . unapp
           case op of
             HSE.QVarOp () qn -> qn
             HSE.QConOp () qn -> qn
-        opVar = HSE.Var () opName
         asPrefixApp =
-          case (ml, mr) of
-            (Just l, _) -> unapp (Exprs.apps opVar (l : toList mr))
-            (Nothing, Just r) -> unapp (Exprs.apps Exprs.flip [opVar, r])
-            (Nothing, Nothing) ->
-              Id -- two-sided section
+          unapp (Exprs.infixAsPrefix ml (Exprs.qopAlone op) mr)
