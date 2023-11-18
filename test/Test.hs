@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Control.Exception
+import Data.Foldable (traverse_)
 
 import qualified Language.Haskell.Exts as HSE
 
@@ -10,9 +11,12 @@ showExp :: HSE.Exp () -> String
 showExp = HSE.prettyPrint
 --showExp = show
 
+parseExp_ :: String -> HSE.ParseResult (HSE.Exp ())
+parseExp_ = fmap (fmap (const ())) . HSE.parseExp
+
 test :: (String, String) -> IO ()
 test (input, expected) =
-  case (parse input, parse expected) of
+  case (parseExp_ input, parseExp_ expected) of
     (HSE.ParseOk inpE, HSE.ParseOk expE) ->
       handle
         (\e -> error $ show (input, expected, (e :: SomeException)))
@@ -33,11 +37,9 @@ test (input, expected) =
       , expected
       , " -> " ++ show expR
       ]
-  where
-    parse = fmap (fmap (const ())) . HSE.parseExp
 
-main :: IO ()
-main = mapM_ test
+cases :: [(String, String)]
+cases =
   -- identity cases
   [ ( "y", "y" )
 
@@ -68,8 +70,31 @@ main = mapM_ test
 
   -- name confusion
   , ( "\\const y -> x", "const (const x)" )
+  , ( "\\y const -> x", "const (const x)" )
 
   -- tuples
   , ( "\\(x, y) -> x",   "fst"        )
   , ( "\\(x, y) -> x y", "ap fst snd" )
   ]
+
+-- These aren't really tests so much as examples. But you can look at them with
+-- your eyeballs.
+writeSteps :: (String, String) -> IO ()
+writeSteps (fp, start) =
+  case parseExp_ start of
+    r@HSE.ParseFailed{} ->
+      error (show r)
+    HSE.ParseOk startE ->
+      writeFile ("test/output/" <> fp <> ".txt")
+        $ unlines . map showExp $ startE : pointfreeSteps startE
+
+stepGerms :: [(String, String)]
+stepGerms =
+  [ ("dots", "\\a b c d -> a (b (c d))")
+  , ("flips", "\\a b c d -> d c b a")
+  ]
+
+main :: IO ()
+main = do
+  traverse_ test cases
+  traverse_ writeSteps stepGerms
