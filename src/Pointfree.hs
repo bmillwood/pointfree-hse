@@ -115,7 +115,6 @@ simplifyPat topP topE =
 data SpecialCaseExp
   = Const (HSE.Exp ())
   | Id
-  | Compose (HSE.Exp ()) (HSE.Exp ())
   | Other (HSE.Exp ())
 
 -- app (unapply n e) n -> e
@@ -124,14 +123,14 @@ unapply n = fmap unSpecial . unapp
   where
     unSpecial (Const r) = Exprs.app Exprs.const r
     unSpecial Id = Exprs.id
-    unSpecial (Compose e1 e2) = HSE.InfixApp () e1 Exprs.compose e2
     unSpecial (Other r) = r
-    compose Id e = e
-    compose e Id = e
-    compose e1 e2 = Compose (unSpecial e1) (unSpecial e2)
     -- after this, I don't like pattern-matching on Other because it makes it
     -- harder to add special cases, this makes patterns easier to spot
     other = Other
+    compose Id e = e
+    compose e Id = e
+    compose e1 e2 =
+      other $ HSE.InfixApp () (unSpecial e1) Exprs.compose (unSpecial e2)
     unapp whole@(HSE.Var () q)
       | q == HSE.UnQual () n = Just Id
       | otherwise = Just (Const whole)
@@ -141,7 +140,7 @@ unapply n = fmap unSpecial . unapp
       pure $ case (uf, ux) of
         (Const _, Const _) -> Const whole
         (Const _, Id) -> other f
-        (Const _, ox) -> Compose f (unSpecial ox)
+        (Const _, ox) -> compose (other f) ox
         (Id, Const _) -> other (HSE.RightSection () Exprs.dollar x)
         (of_, Const _) -> other (Exprs.apps Exprs.flip [unSpecial of_, x])
         (of_, Id) -> other (Exprs.app Exprs.join (unSpecial of_))
