@@ -14,3 +14,5 @@ While the original pointfree was very much "eliminate points and then apply a
 variety of refactoring transformations to improve the result", this one is so
 far very focused on eliminating points. The refactoring capability is also an
 interesting tool, but probably best as a separate step.
+
+Much of the AST is still unhandled and will crash.
