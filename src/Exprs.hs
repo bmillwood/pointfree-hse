@@ -8,12 +8,14 @@ prelude = HSE.ModuleName () "Prelude"
 preludeI :: String -> HSE.Exp ()
 preludeI i = HSE.Var () (HSE.Qual () prelude (HSE.Ident () i))
 
-id, const, ap, flip, join, fst, snd :: HSE.Exp ()
+id, const, ap, flip, join, liftA2 :: HSE.Exp ()
 id = preludeI "id"
 const = preludeI "const"
 ap = preludeI "ap"
 flip = preludeI "flip"
 join = preludeI "join"
+liftA2 = preludeI "liftA2"
+fst, snd :: HSE.Exp ()
 fst = preludeI "fst"
 snd = preludeI "snd"
 

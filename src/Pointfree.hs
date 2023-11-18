@@ -140,6 +140,36 @@ unapply n = fmap finalise . unapp
         (Other of_, Other ox) -> useAp of_ ox
         where
           useAp af ag = Other (Exprs.apps Exprs.ap [af, ag])
+    unapp whole@(HSE.InfixApp () l op r)
+      | opName == HSE.UnQual () n =
+          unapp (Exprs.apps opVar [l, r])
+      | otherwise = do
+          ul <- unapp l
+          ur <- unapp r
+          pure $ case (ul, ur) of
+            (Const _, Const _) -> Const whole
+            (Const _, Id) -> Other (HSE.LeftSection () l op)
+            (Const _, Other or_) ->
+              Other $ HSE.InfixApp ()
+                (HSE.LeftSection () l op)
+                Exprs.compose
+                or_
+            (Id, Const _) -> Other (HSE.RightSection () op r)
+            (Id, Id) -> Other $ Exprs.app Exprs.join opVar
+            (Id, Other or_) -> Other $ Exprs.apps Exprs.ap [opVar, or_]
+            (Other ol, Const _) ->
+              Other $ HSE.InfixApp ()
+                (HSE.RightSection () op r)
+                Exprs.compose
+                ol
+            (Other ol, Id) -> Other $ Exprs.apps Exprs.liftA2 [opVar, ol, Exprs.id]
+            (Other ol, Other or_) -> Other $ Exprs.apps Exprs.liftA2 [opVar, ol, or_]
+      where
+        opVar = HSE.Var () opName
+        opName =
+          case op of
+            HSE.QVarOp () qn -> qn
+            HSE.QConOp () qn -> qn
     unapp (HSE.Lambda () [] body) = unapp body
     unapp l@(HSE.Lambda () (p : ps) body)
       | Set.member n boundNames = Just (Const l)
