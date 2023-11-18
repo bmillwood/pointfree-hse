@@ -100,6 +100,9 @@ replaceFreeCases =
   , ("x", "x")
   , ("\\x -> n", "\\x -> E")
   , ("\\n -> n", "\\n -> n")
+  , ("\\x -> x + n", "\\x -> x + E")
+  , ("\\x -> (+ n)", "\\x -> (+ E)")
+  , ("\\x -> (n +)", "\\x -> (E +)")
   ]
 
 -- These aren't really tests so much as examples. But you can look at them with

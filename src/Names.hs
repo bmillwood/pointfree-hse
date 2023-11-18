@@ -84,7 +84,7 @@ annExp bound which (HSE.RightSection () qop e) = HSE.RightSection newAnn aop ae
     ae = annExp bound which e
     newAnn = case which of
       Bound -> bound
-      _ -> Set.unions [ HSE.ann aop, HSE.ann aop ]
+      _ -> Set.unions [ HSE.ann aop, HSE.ann ae ]
 annExp _ _ e = error $ "annExp: unhandled " ++ show e
 
 annQName :: Set (HSE.Name ()) -> Which -> HSE.QName () -> HSE.QName (Set (HSE.Name ()))
