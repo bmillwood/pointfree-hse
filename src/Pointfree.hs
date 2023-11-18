@@ -112,76 +112,79 @@ simplifyPat topP topE =
     simplifyAnnPat avoid (HSE.PParen _ p) e = simplifyAnnPat avoid p e
     simplifyAnnPat _ _ _ = Nothing
 
-data Unapply
-  = Const
+data SpecialCaseExp
+  = Const (HSE.Exp ())
   | Id
   | Other (HSE.Exp ())
 
 -- app (unapply n e) n -> e
 unapply :: HSE.Name () -> HSE.Exp () -> Maybe (HSE.Exp ())
-unapply n whole = finalise <$> unapp whole
+unapply n = fmap unSpecial . unapp
   where
-    finalise Const = Exprs.app Exprs.const whole
-    finalise Id = Exprs.id
-    finalise (Other r) = r
-    unapp (HSE.Var () q)
+    unSpecial (Const r) = Exprs.app Exprs.const r
+    unSpecial Id = Exprs.id
+    unSpecial (Other r) = r
+    unapp whole@(HSE.Var () q)
       | q == HSE.UnQual () n = Just Id
-      | otherwise = Just Const
-    unapp (HSE.App () f x) = do
+      | otherwise = Just (Const whole)
+    unapp whole@(HSE.App () f x) = do
       uf <- unapp f
       ux <- unapp x
       pure $ case (uf, ux) of
-        (Const, Const) -> Const
-        (Const, Id) -> Other f
-        (Const, Other ox) -> Other (HSE.InfixApp () f Exprs.compose ox)
-        (Id, Const) -> Other (HSE.RightSection () Exprs.dollar x)
-        (Id, Id) -> useAp Exprs.id Exprs.id
-        (Id, Other ox) -> useAp Exprs.id ox
-        (Other of_, Const) -> Other (Exprs.apps Exprs.flip [of_, x])
+        (Const _, Const _) -> Const whole
+        (Const _, Id) -> Other f
+        (Const _, Other ox) -> Other (HSE.InfixApp () f Exprs.compose ox)
+        (Id, Const _) -> Other (HSE.RightSection () Exprs.dollar x)
+        (Other of_, Const _) -> Other (Exprs.apps Exprs.flip [of_, x])
         (Other of_, Id) -> Other (Exprs.app Exprs.join of_)
-        (Other of_, Other ox) -> useAp of_ ox
-        where
-          useAp af ag = Other (Exprs.apps Exprs.ap [af, ag])
-    unapp (HSE.InfixApp () l op r) = unInfixApp (Just l) op (Just r)
-    unapp (HSE.LeftSection () l op) = unInfixApp (Just l) op Nothing
-    unapp (HSE.RightSection () op r) = unInfixApp Nothing op (Just r)
+        (of_, ox) ->
+          Other $ Exprs.apps Exprs.ap [unSpecial of_, unSpecial ox]
+    unapp whole@(HSE.InfixApp () l op r) =
+      unInfixApp whole (Just l) op (Just r)
+    unapp whole@(HSE.LeftSection () l op) =
+      unInfixApp whole (Just l) op Nothing
+    unapp whole@(HSE.RightSection () op r) =
+      unInfixApp whole Nothing op (Just r)
     unapp (HSE.Lambda () [] body) = unapp body
-    unapp (HSE.Lambda () (p : ps) body)
-      | Set.member n boundNames = Just Const
+    unapp whole@(HSE.Lambda () (p : ps) body)
+      | Set.member n boundNames = Just (Const whole)
       | otherwise = do
           ub <- unapp (Exprs.lambda ps body)
           Just case ub of
-            Const -> Const
-            Id -> useFlip Exprs.id
-            Other ob -> useFlip ob
+            Const _ -> Const whole
+            ob -> Other
+              $ Exprs.app Exprs.flip
+              $ Exprs.lambda [p] (unSpecial ob)
       where
         boundNames = foldMap (HSE.ann . Names.annotatePatWithAllUnQual) (p : ps)
-        useFlip ob = Other (Exprs.app Exprs.flip (Exprs.lambda [p] ob))
     unapp (HSE.Paren () e) = unapp e
     unapp _ = Nothing
 
-    unInfixApp ml op mr
+    -- we don't use this function with both ml and mr being Nothing, since that
+    -- would be a "two-sided section", but we try to return a right-ish answer
+    -- there anyway
+    unInfixApp whole ml op mr
       | opName == HSE.UnQual () n =
           asPrefixApp
       | otherwise = do
           ul <- unappMaybe ml
           ur <- unappMaybe mr
           case (ul, ur) of
-            (Nothing, Nothing) -> Just Const -- two-sided section again
-            (Nothing, Just (Const, _)) -> Just Const
-            (Just (Const, _), Nothing) -> Just Const
-            (Just (Const, _), Just (Const, _)) -> Just Const
-            (Just (Const, l), Just (Id, _)) ->
+            (Nothing, Nothing) -> Just (Const whole) -- two-sided section
+            (Nothing, Just (Const _)) -> Just (Const whole)
+            (Just (Const _), Nothing) -> Just (Const whole)
+            (Just (Const _), Just (Const _)) -> Just (Const whole)
+            (Just (Const l), Just Id) ->
               Just . Other $ HSE.LeftSection () l op
-            (Just (Const, l), Just (Other or_, _)) ->
+            (Just (Const l), Just (Other or_)) ->
               Just . Other $
                 HSE.InfixApp ()
                   (HSE.LeftSection () l op)
                   Exprs.compose
                   or_
-            (Just (Id, _), Just (Const, r)) ->
+            (Just Id, Just (Const r)) ->
               Just . Other $ HSE.RightSection () op r
-            (Just (Other ol, _), Just (Const, r)) ->
+            (Just (Other ol), Just (Const r)) ->
               Just . Other $
                 HSE.InfixApp ()
                   (HSE.RightSection () op r)
@@ -199,8 +202,6 @@ unapply n whole = finalise <$> unapp whole
             (Just l, _) -> unapp (Exprs.apps opVar (l : toList mr))
             (Nothing, Just r) -> unapp (Exprs.apps Exprs.flip [opVar, r])
             (Nothing, Nothing) ->
-              -- two-sided sections are not a thing, but this would be the right
-              -- answer if they were
-              Just Id
+              Just Id -- two-sided section
         unappMaybe Nothing = Just Nothing
-        unappMaybe (Just e) = Just . (, e) <$> unapp e
+        unappMaybe (Just e) = Just <$> unapp e
