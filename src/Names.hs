@@ -50,9 +50,7 @@ annExp bound which (HSE.App () f x) = HSE.App newAnn af ax
   where
     af = annExp bound which f
     ax = annExp bound which x
-    newAnn = case which of
-      Bound -> bound
-      _ -> Set.union (HSE.ann af) (HSE.ann ax)
+    newAnn = annSubs bound which [HSE.ann af, HSE.ann ax]
 annExp bound which (HSE.Lambda () ps body) = HSE.Lambda newAnn aps abody
   where
     aps = map annPat ps
@@ -68,24 +66,22 @@ annExp bound which (HSE.InfixApp () e1 qop e2) = HSE.InfixApp newAnn ae1 aop ae2
     ae1 = annExp bound which e1
     aop = annQOp bound which qop
     ae2 = annExp bound which e2
-    newAnn = case which of
-      Bound -> bound
-      _ -> Set.unions [ HSE.ann ae1, HSE.ann aop, HSE.ann ae2 ]
+    newAnn = annSubs bound which [HSE.ann ae1, HSE.ann aop, HSE.ann ae2]
 annExp bound which (HSE.LeftSection () e qop) = HSE.LeftSection newAnn ae aop
   where
     ae = annExp bound which e
     aop = annQOp bound which qop
-    newAnn = case which of
-      Bound -> bound
-      _ -> Set.unions [ HSE.ann ae, HSE.ann aop ]
+    newAnn = annSubs bound which [HSE.ann ae, HSE.ann aop]
 annExp bound which (HSE.RightSection () qop e) = HSE.RightSection newAnn aop ae
   where
     aop = annQOp bound which qop
     ae = annExp bound which e
-    newAnn = case which of
-      Bound -> bound
-      _ -> Set.unions [ HSE.ann aop, HSE.ann ae ]
+    newAnn = annSubs bound which [HSE.ann aop, HSE.ann ae]
 annExp _ _ e = error $ "annExp: unhandled " ++ show e
+
+annSubs :: Set (HSE.Name ()) -> Which -> [Set (HSE.Name ())] -> Set (HSE.Name ())
+annSubs bound Bound _ = bound
+annSubs _ _ subs = Set.unions subs
 
 annQName :: Set (HSE.Name ()) -> Which -> HSE.QName () -> HSE.QName (Set (HSE.Name ()))
 annQName bound Bound q = bound <$ q
