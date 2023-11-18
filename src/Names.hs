@@ -141,6 +141,14 @@ replaceFree n with = replaceIn . annotateExpWith FreeUnQual
       = HSE.App ()
           (() <$ replaceIn f)
           (() <$ replaceIn x)
+    replaceIn (HSE.InfixApp _ l op r)
+      | Set.member n (HSE.ann op) =
+        Exprs.apps with (map replaceIn [l, r])
+      | otherwise =
+        HSE.InfixApp ()
+          (() <$ replaceIn l)
+          (() <$ op)
+          (() <$ replaceIn r)
     replaceIn l@(HSE.Lambda free ps body)
       | Set.member n free = HSE.Lambda () (map (() <$) ps) (replaceIn body)
       | otherwise = () <$ l

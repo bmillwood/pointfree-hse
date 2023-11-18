@@ -74,8 +74,9 @@ pointfreeCases =
   , ( "\\y const -> x", "const (const x)" )
 
   -- tuples
-  , ( "\\(x, y) -> x",   "fst"        )
-  , ( "\\(x, y) -> x y", "ap fst snd" )
+  , ( "\\(x, y) -> x",     "fst"                )
+  , ( "\\(x, y) -> x y",   "ap fst snd"         )
+  , ( "\\(x, y) -> x + y", "liftA2 (+) fst snd" )
   ]
 
 testReplaceFree :: HSE.Exp () -> HSE.Exp ()
