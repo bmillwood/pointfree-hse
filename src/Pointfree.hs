@@ -1,7 +1,9 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TupleSections #-}
 module Pointfree (pointfreeSteps, pointfree) where
 
+import Data.Foldable (toList)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
@@ -140,36 +142,9 @@ unapply n whole = finalise <$> unapp whole
         (Other of_, Other ox) -> useAp of_ ox
         where
           useAp af ag = Other (Exprs.apps Exprs.ap [af, ag])
-    unapp (HSE.InfixApp () l op r)
-      | opName == HSE.UnQual () n =
-          unapp (Exprs.apps opVar [l, r])
-      | otherwise = do
-          ul <- unapp l
-          ur <- unapp r
-          pure $ case (ul, ur) of
-            (Const, Const) -> Const
-            (Const, Id) -> Other (HSE.LeftSection () l op)
-            (Const, Other or_) ->
-              Other $ HSE.InfixApp ()
-                (HSE.LeftSection () l op)
-                Exprs.compose
-                or_
-            (Id, Const) -> Other (HSE.RightSection () op r)
-            (Id, Id) -> Other $ Exprs.app Exprs.join opVar
-            (Id, Other or_) -> Other $ Exprs.apps Exprs.ap [opVar, or_]
-            (Other ol, Const) ->
-              Other $ HSE.InfixApp ()
-                (HSE.RightSection () op r)
-                Exprs.compose
-                ol
-            (Other ol, Id) -> Other $ Exprs.apps Exprs.liftA2 [opVar, ol, Exprs.id]
-            (Other ol, Other or_) -> Other $ Exprs.apps Exprs.liftA2 [opVar, ol, or_]
-      where
-        opVar = HSE.Var () opName
-        opName =
-          case op of
-            HSE.QVarOp () qn -> qn
-            HSE.QConOp () qn -> qn
+    unapp (HSE.InfixApp () l op r) = unInfixApp (Just l) op (Just r)
+    unapp (HSE.LeftSection () l op) = unInfixApp (Just l) op Nothing
+    unapp (HSE.RightSection () op r) = unInfixApp Nothing op (Just r)
     unapp (HSE.Lambda () [] body) = unapp body
     unapp (HSE.Lambda () (p : ps) body)
       | Set.member n boundNames = Just Const
@@ -184,3 +159,48 @@ unapply n whole = finalise <$> unapp whole
         useFlip ob = Other (Exprs.app Exprs.flip (Exprs.lambda [p] ob))
     unapp (HSE.Paren () e) = unapp e
     unapp _ = Nothing
+
+    unInfixApp ml op mr
+      | opName == HSE.UnQual () n =
+          asPrefixApp
+      | otherwise = do
+          ul <- unappMaybe ml
+          ur <- unappMaybe mr
+          case (ul, ur) of
+            (Nothing, Nothing) -> Just Const -- two-sided section again
+            (Nothing, Just (Const, _)) -> Just Const
+            (Just (Const, _), Nothing) -> Just Const
+            (Just (Const, _), Just (Const, _)) -> Just Const
+            (Just (Const, l), Just (Id, _)) ->
+              Just . Other $ HSE.LeftSection () l op
+            (Just (Const, l), Just (Other or_, _)) ->
+              Just . Other $
+                HSE.InfixApp ()
+                  (HSE.LeftSection () l op)
+                  Exprs.compose
+                  or_
+            (Just (Id, _), Just (Const, r)) ->
+              Just . Other $ HSE.RightSection () op r
+            (Just (Other ol, _), Just (Const, r)) ->
+              Just . Other $
+                HSE.InfixApp ()
+                  (HSE.RightSection () op r)
+                  Exprs.compose
+                  ol
+            _ -> asPrefixApp
+      where
+        opName =
+          case op of
+            HSE.QVarOp () qn -> qn
+            HSE.QConOp () qn -> qn
+        opVar = HSE.Var () opName
+        asPrefixApp =
+          case (ml, mr) of
+            (Just l, _) -> unapp (Exprs.apps opVar (l : toList mr))
+            (Nothing, Just r) -> unapp (Exprs.apps Exprs.flip [opVar, r])
+            (Nothing, Nothing) ->
+              -- two-sided sections are not a thing, but this would be the right
+              -- answer if they were
+              Just Id
+        unappMaybe Nothing = Just Nothing
+        unappMaybe (Just e) = Just . (, e) <$> unapp e

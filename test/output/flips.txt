@@ -1,2 +1,5 @@
 \ a b c d -> d c b a
 \ a b c -> flip (flip ($ c) b) a
+\ a b -> flip (flip . flip (flip . flip ($)) b) a
+\ a -> flip (flip . (flip .) . flip (flip . flip ($))) a
+flip (flip . (flip .) . flip (flip . flip ($)))
