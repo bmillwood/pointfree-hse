@@ -5,6 +5,7 @@ import Data.Foldable (traverse_)
 
 import qualified Language.Haskell.Exts as HSE
 
+import qualified Names
 import Pointfree
 
 showExp :: HSE.Exp () -> String
@@ -14,14 +15,14 @@ showExp = HSE.prettyPrint
 parseExp_ :: String -> HSE.ParseResult (HSE.Exp ())
 parseExp_ = fmap (fmap (const ())) . HSE.parseExp
 
-test :: (String, String) -> IO ()
-test (input, expected) =
+test :: (HSE.Exp () -> HSE.Exp ()) -> (String, String) -> IO ()
+test f (input, expected) =
   case (parseExp_ input, parseExp_ expected) of
     (HSE.ParseOk inpE, HSE.ParseOk expE) ->
       handle
         (\e -> error $ show (input, expected, (e :: SomeException)))
         $ do
-        let actual = pointfree inpE
+        let actual = f inpE
         if actual == expE
         then pure ()
         else
@@ -38,8 +39,8 @@ test (input, expected) =
       , " -> " ++ show expR
       ]
 
-cases :: [(String, String)]
-cases =
+pointfreeCases :: [(String, String)]
+pointfreeCases =
   -- identity cases
   [ ( "y", "y" )
 
@@ -77,6 +78,20 @@ cases =
   , ( "\\(x, y) -> x y", "ap fst snd" )
   ]
 
+testReplaceFree :: HSE.Exp () -> HSE.Exp ()
+testReplaceFree =
+  Names.replaceFree
+    (HSE.Ident () "n")
+    (HSE.Con () (HSE.UnQual () (HSE.Ident () "E")))
+
+replaceFreeCases :: [(String, String)]
+replaceFreeCases =
+  [ ("n", "E")
+  , ("x", "x")
+  , ("\\x -> n", "\\x -> E")
+  --, ("\\n -> n", "\\n -> n")
+  ]
+
 -- These aren't really tests so much as examples. But you can look at them with
 -- your eyeballs.
 writeSteps :: (String, String) -> IO ()
@@ -96,5 +111,6 @@ stepGerms =
 
 main :: IO ()
 main = do
-  traverse_ test cases
+  traverse_ (test pointfree) pointfreeCases
+  traverse_ (test testReplaceFree) replaceFreeCases
   traverse_ writeSteps stepGerms
