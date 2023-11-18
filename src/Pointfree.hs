@@ -78,6 +78,8 @@ findPoints e@(HSE.Paren () _) = go id e
       = p{ restore = fmap (k .) restore }
 findPoints _ = []
 
+-- | convert a lambda away from using complex patterns, i.e. given P and E, try
+-- to find a name N and expr X such that @\\N -> X@ is equivalent to @\\P -> E@
 simplifyPat :: HSE.Pat () -> HSE.Exp () -> Maybe (HSE.Name (), HSE.Exp ())
 simplifyPat topP topE =
   simplifyAnnPat Set.empty
