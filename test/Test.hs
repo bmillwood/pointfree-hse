@@ -53,7 +53,7 @@ pointfreeCases =
 
   -- parens
   , ( "(f (\\x -> x))", "(f id)" )
-  , ( "\\(x) -> x",     "id"     )
+  , ( "\\(x) -> x"    , "id"     )
 
   -- lambdas with application body
   , ( "\\x -> f y"        , "const (f y)" )
@@ -85,8 +85,8 @@ pointfreeCases =
   , ( "\\y const -> x", "const (const x)" )
 
   -- tuples
-  , ( "\\(x, y) -> x",     "fst"                )
-  , ( "\\(x, y) -> x y",   "ap fst snd"         )
+  , ( "\\(x, y) -> x"  , "fst"        )
+  , ( "\\(x, y) -> x y", "ap fst snd" )
   ]
 
 testReplaceFree :: HSE.Exp () -> HSE.Exp ()
